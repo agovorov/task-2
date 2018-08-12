@@ -1,0 +1,92 @@
+version: '2'
+services:
+  pgadmin:
+    image: fenglc/pgadmin4
+    volumes:
+       - ./db/pgadmin/2:/home/pgadmin/.pgadmin
+    ports:
+      - "5050:5050"
+    restart: unless-stopped
+  luxystech-data:
+    image: luxystech/data
+  cache:
+    image: redis:latest
+    environment:
+      - TZ=Asia/Almaty
+  master:
+        container_name: 'citus_master'
+        image: citusdata/citus
+        ports:
+         - "5432:5432"
+        environment:
+         - POSTGRES_USER=postgres
+         - POSTGRES_PASSWORD=postgres
+         - POSTGRES_DB=db_gos
+        labels: ['com.citusdata.role=Master']
+        volumes:
+         - ./db/postgres:/var/lib/postgresql/data
+        extra_hosts:
+          - "database.vpn:10.10.0.100"
+          - "pg3.vpn:10.10.0.218"
+          - "pg2.vpn:10.10.0.247"
+  worker:
+    image: 'citusdata/citus:6.1.1'
+    labels: ['com.citusdata.role=Worker']
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=db_gos
+    volumes:
+      - ./db/citus:/var/lib/pgsql/data
+  config:
+    container_name: 'citus_config'
+    image: 'citusdata/workerlist-gen:2.0.0'
+    volumes: ['/var/run/docker.sock:/tmp/docker.sock']
+    volumes_from: ['master']
+#  queue:
+#    image: "rabbitmq:3-management"
+#    hostname: "queue"
+#    environment:
+#      RABBITMQ_ERLANG_COOKIE: "SWQOKODSQALRPCLNMEQG"
+#      RABBITMQ_DEFAULT_USER: "test"
+#      RABBITMQ_DEFAULT_PASS: "test"
+#      RABBITMQ_DEFAULT_VHOST: "/"
+#    ports:
+#      - "15672:15672"
+#      - "5672:5672"
+  citizenzet-crm:
+    image: citizenzet/crm:latest
+    volumes:
+      - ./migrate.sh:/var/www/gos/ci/migrate.sh
+      - ./../src/:/var/www/gos
+      - ./nginx/conf/gos.conf:/etc/nginx/conf.d/gos.conf
+    ports:
+      - 0.0.0.0:80:80
+      - 0.0.0.0:9000:9000
+      - 9000
+      - 9001
+    restart: always
+    expose:
+      - "9000"
+      - "9001"
+    links:
+      - master:postgres
+      #- cache:memcached
+      #- queue:rabbitmq
+      - pgadmin:pgadmin
+      - cache:redis
+    volumes_from:
+      - luxystech-data
+    extra_hosts:
+      - "database.vpn:10.10.0.247"
+      - "pg3.vpn:10.10.0.218"
+      - "pg2.vpn:10.10.0.247"
+    environment:
+      TZ: "Asia/Almaty"
+      TERM: "xterm-256color"
+      OPCACHE_REVALIDATE: "1"
+      XDEBUG_CONFIG: remote_host=192.168.2.209
+
+## /etc/resolv.conf
+## nameserver 8.8.8.8
+
